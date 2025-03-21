@@ -12,28 +12,28 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class SongDto {
 
-  @NotNull
+  @NotNull(message = "Song id is required")
   @Min(1)
   private Long id;
 
-  @NotBlank
+  @NotBlank(message = "Song name is required")
   @Size(min = 1, max = 100)
   private String name;
 
-  @NotBlank
+  @NotBlank(message = "Song artist is required")
   @Size(min = 1, max = 100)
   private String artist;
 
-  @NotBlank
+  @NotBlank(message = "Song album is required")
   @Size(min = 1, max = 100)
   private String album;
 
-  @NotBlank
-  @Pattern(regexp = "^[012345]\\d:[0-5]\\d$", message = "Duration must be in the format 'MM:SS' and between 00:00 and 59:59")
+  @NotBlank(message = "Song duration is required")
+  @Pattern(regexp = "^[012345]\\d:[0-5]\\d$", message = "Duration must be in mm:ss format with leading zeros")
   private String duration;
 
-  @NotBlank
-  @Pattern(regexp = "^(19|20)\\d{2}$", message = "Year must be in the format YYYY and between 1900 and 2099")
+  @NotBlank(message = "Song year is required")
+  @Pattern(regexp = "^(19|20)\\d{2}$", message = "Year must be between 1900 and 2099")
   private String year;
 
   public SongDto(Long id, String name, String artist, String album, String duration, String year) {

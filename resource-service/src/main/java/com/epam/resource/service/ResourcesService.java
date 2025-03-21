@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
 import org.springframework.http.HttpMethod;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @RequiredArgsConstructor
@@ -38,8 +40,6 @@ import java.util.Map;
 public class ResourcesService {
 
   private static final int IDS_STRING_MAX_LENGTH = 200;
-  private static final String CSV_STRING_LENGTH_EXCEEDED_ERROR =
-      String.format("CSV string length must be less than %d characters.", IDS_STRING_MAX_LENGTH);
   private static final String SONG_SERVICE_URL = "http://localhost:8092/songs";
   private static final ErrorCodeException SOMETHING_WENT_WRONG_EXCEPTION = 
       new ErrorCodeException(HttpStatus.INTERNAL_SERVER_ERROR.value(), MessageConstants.SOMETHING_WENT_WRONG);
@@ -121,19 +121,19 @@ public class ResourcesService {
       int parsedId = Integer.parseInt(id);
       if (parsedId <= 0) {
         throw new ErrorCodeException(HttpStatus.BAD_REQUEST.value(), 
-            String.format("'id' must be a positive number. Found '%s'", id));
+            String.format("Invalid value '%s' for ID. Must be a positive integer", id));
       }
       return parsedId;
     } catch (NumberFormatException e) {
       log.error(e.getMessage());
       throw new ErrorCodeException(HttpStatus.BAD_REQUEST.value(), 
-          String.format("Failed to parse '%s' value", id));
+          String.format("Invalid value '%s' for ID. Must be a positive integer", id));
     }
   }
 
   @Transactional
   public Map<String, List<Long>> deleteSongsByIds(String ids) {
-    validateResourceIds(ids);
+    validateResourceIdsLength(ids);
     List<Long> idList = parseResourceIds(ids);
     try {
       List<Long> deletedIds = deleteExistingResourcesById(idList);
@@ -184,20 +184,31 @@ public class ResourcesService {
   }
 
   private List<Long> parseResourceIds(String ids) {
+    AtomicReference<String> invalidValue = new AtomicReference<>(StringUtils.EMPTY);
     try {
       return Arrays.stream(ids.split(","))
-          .map(Long::parseLong)
+          .map(id -> mapAndReturnInvalidLong(id, invalidValue))
           .toList();
     } catch (NumberFormatException e) {
       log.error(e.getMessage());
-      throw new ErrorCodeException(HttpStatus.BAD_REQUEST.value(), "Failed to parse 'ids' parameter");
+      throw new ErrorCodeException(HttpStatus.BAD_REQUEST.value(), 
+          String.format("Invalid ID format: '%s'. Only positive integers are allowed", invalidValue.get()));
     }
   }
 
-  private void validateResourceIds(String ids) {
+  private static long mapAndReturnInvalidLong(String id, AtomicReference<String> invalidValue) {
+    try {
+      return Long.parseLong(id);
+    } catch (NumberFormatException e) {
+      invalidValue.set(id);
+      throw e;
+    }
+  }
+
+  private void validateResourceIdsLength(String ids) {
     if (ids.length() >= IDS_STRING_MAX_LENGTH) {
       throw new ErrorCodeException(HttpStatus.BAD_REQUEST.value(), 
-          CSV_STRING_LENGTH_EXCEEDED_ERROR + " Found " + ids.length() + " characters");
+          String.format("CSV string is too long: received %s characters, maximum allowed is %s", ids.length(), IDS_STRING_MAX_LENGTH));
     }
   }
 }
