@@ -1,3 +1,32 @@
+# containerization_overview (module 2, sub-task 1)
+# Launch steps
+
+# 1. create a custom network
+# docker network create microservices-net
+
+# 2. run the databases
+# docker compose up -d
+
+# 3. build the containers
+# docker build --platform=linux/amd64 -t resource-service ./resource-service
+# docker build --platform=linux/amd64 -t song-service ./song-service
+
+# 4. run the containers in the custom network with overridden datasource url
+# docker run -d --platform=linux/amd64 \
+#  --network=microservices-net \
+#  -p 8091:8091 \
+#  -e SPRING_DATASOURCE_URL=jdbc:postgresql://resource-db:5432/resource-db \
+#  resource-service
+
+# docker run -d --platform=linux/amd64 \
+#  --network=microservices-net \
+#  -p 8092:8092 \
+#  -e SPRING_DATASOURCE_URL=jdbc:postgresql://song-db:5432/song-db \
+#  song-service
+
+# 5. As a result, both Spring Boot launches and containers are running in the custom network
+# and response to localhost requests from Postman.
+
 services:
   resource-db:
     image: postgres:17-alpine
@@ -7,6 +36,8 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"  # Maps container port 5432 to host port 5432
+    networks:
+      - microservices-net
 
   song-db:
     image: postgres:17-alpine
@@ -16,6 +47,12 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "5433:5432"  # Maps container port 5432 to host port 5433 (to avoid conflict)
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    external: true
 
 # Related settings for application.properties:
 # 
