@@ -10,6 +10,7 @@ import com.epam.resource.util.SongDtoMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,19 +41,35 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 public class ResourcesService {
 
+  private static final String HTTP_PROTOCOL_URL = "http://";
+  private static final String SONG_SERVICE_SONGS_CONTROLLER = "/songs";
   private static final int IDS_STRING_MAX_LENGTH = 200;
-  private static final String SONG_SERVICE_URL = "http://localhost:8092/songs";
   private static final ErrorCodeException SOMETHING_WENT_WRONG_EXCEPTION = 
       new ErrorCodeException(HttpStatus.INTERNAL_SERVER_ERROR.value(), MessageConstants.SOMETHING_WENT_WRONG);
+  
   private final Tika tika = new Tika();
   private final RestTemplate restTemplate = new RestTemplate();
   private final ObjectMapper objectMapper = new ObjectMapper();
   
-  private final ResourceRepository resourceRepository;
+  @Value("${song.service.ref.name}")
+  private String songServiceRefName;
+  @Value("${song.service.server.port}")
+  private String songServiceServerPort;
 
+  private final ResourceRepository resourceRepository;
+  
+  private String songServiceUrlSongsController;
+
+  @PostConstruct
+  private void composeSongServiceReference() {
+    songServiceUrlSongsController = HTTP_PROTOCOL_URL + songServiceRefName + ":" + songServiceServerPort + SONG_SERVICE_SONGS_CONTROLLER;
+    log.info("Song service URL: {}", songServiceUrlSongsController);
+  }
+  
   @Transactional
   public Map<String, Long> processAndSaveResource(HttpServletRequest request) {
     byte[] mp3file = extractBytesFromRequest(request);
+    log.debug("mp3file size: {}", mp3file.length);
     ResourceEntity savedEntity = saveNewResource(mp3file);
     Metadata metadata = extractMetadata(mp3file);
     SongDto parsedSongDto = SongDtoMapper.toDto(savedEntity.getId(), metadata);
@@ -70,7 +88,7 @@ public class ResourcesService {
 
   private Map<String, Long> saveResourceMetadataInSongService(SongDto parsedSongDto) {
     try {
-      ResponseEntity<String> songResponse = restTemplate.postForEntity(SONG_SERVICE_URL, parsedSongDto, String.class);
+      ResponseEntity<String> songResponse = restTemplate.postForEntity(songServiceUrlSongsController, parsedSongDto, String.class);
 
       if (songResponse.getStatusCode() == HttpStatus.OK) {
         return objectMapper.readValue(songResponse.getBody(), new TypeReference<>() {});
@@ -152,7 +170,7 @@ public class ResourcesService {
       if (CollectionUtils.isNotEmpty(deletedIds)) {
         String deletedIdsParam = "?id=" + String.join(",", deletedIds.stream().map(String::valueOf).toList());
         ResponseEntity<String> songDeleteResponse = restTemplate.exchange(
-            SONG_SERVICE_URL + deletedIdsParam, 
+            songServiceUrlSongsController + deletedIdsParam, 
             HttpMethod.DELETE, 
             null, 
             String.class);

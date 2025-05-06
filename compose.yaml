@@ -1,67 +1,73 @@
-# containerization_overview (module 2, sub-task 1)
-# Launch steps
+# For traditional app usage, deploy only the databases
+# docker compose up -d resource-db song-db
 
-# 1. create a custom network
-# docker network create microservices-net
-
-# 2. run the databases
-# docker compose up -d
-
-# 3. build the containers
-# docker build --platform=linux/amd64 -t resource-service ./resource-service
-# docker build --platform=linux/amd64 -t song-service ./song-service
-
-# 4. run the containers in the custom network with overridden datasource url
-# docker run -d --platform=linux/amd64 \
-#  --network=microservices-net \
-#  -p 8091:8091 \
-#  -e SPRING_DATASOURCE_URL=jdbc:postgresql://resource-db:5432/resource-db \
-#  resource-service
-
-# docker run -d --platform=linux/amd64 \
-#  --network=microservices-net \
-#  -p 8092:8092 \
-#  -e SPRING_DATASOURCE_URL=jdbc:postgresql://song-db:5432/song-db \
-#  song-service
-
-# 5. As a result, both Spring Boot launches and containers are running in the custom network
-# and response to localhost requests from Postman.
+# For full deployment to Docker, use the following command:
+# docker compose up -d --build
 
 services:
   resource-db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: resource-db
-      POSTGRES_USER: postgres  # Default, can be omitted if unchanged
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB_RESOURCE_SERVICE}
+      POSTGRES_USER: ${POSTGRES_USER_RESOURCE_SERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_RESOURCE_SERVICE}
     ports:
-      - "5432:5432"  # Maps container port 5432 to host port 5432
-    networks:
-      - microservices-net
+      - "${HOST_PORT_RESOURCE_DB}:${CONTAINER_PORT_RESOURCE_DB}"  # Maps container port 5432 to host port 5432
+    volumes:
+      - ./init-scripts/resource-db:/docker-entrypoint-initdb.d # Places the init scripts in the container's init directory
+    # networks:
+    #  - microservices-net 
 
   song-db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: song-db
-      POSTGRES_USER: postgres  # Default, can be omitted if unchanged
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB_SONG_SERVICE}
+      POSTGRES_USER: ${POSTGRES_USER_SONG_SERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_SONG_SERVICE}
     ports:
-      - "5433:5432"  # Maps container port 5432 to host port 5433 (to avoid conflict)
-    networks:
-      - microservices-net
+      - "${HOST_PORT_SONG_DB}:${CONTAINER_PORT_SONG_DB}"  # Maps container port 5432 to host port 5433 (to avoid conflict)
+    volumes:
+      - ./init-scripts/song-db:/docker-entrypoint-initdb.d # Places the init scripts in the container's init directory
+    # networks:
+    #  - microservices-net
 
-networks:
-  microservices-net:
-    external: true
+  resource-service:
+    build:
+      context: ./resource-service
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    ports:
+      - "${RESOURCE_SERVICE_SERVER_PORT}:${RESOURCE_SERVICE_SERVER_PORT}"
+    environment:
+      SPRING_DATASOURCE_URL: ${RESOURCE_DB_URL}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER_RESOURCE_SERVICE}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD_RESOURCE_SERVICE}
+      SERVER_PORT: ${RESOURCE_SERVICE_SERVER_PORT}
+      SONG_SERVICE_REF_NAME: ${SONG_SERVICE_REF_NAME}
+      SONG_SERVICE_SERVER_PORT: ${SONG_SERVICE_SERVER_PORT}
+    depends_on:
+      - resource-db
 
-# Related settings for application.properties:
-# 
-# For resource-service:
-# spring.datasource.url=jdbc:postgresql://localhost:5432/resource-db
-# spring.datasource.username=postgres
-# spring.datasource.password=postgres
-#
-# For song-service:
-# spring.datasource.url=jdbc:postgresql://localhost:5433/song-db
-# spring.datasource.username=postgres
-# spring.datasource.password=postgres
+  song-service:
+    build:
+      context: ./song-service
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    ports:
+      - "${SONG_SERVICE_SERVER_PORT}:${SONG_SERVICE_SERVER_PORT}"
+    environment:
+      SPRING_DATASOURCE_URL: ${SONG_DB_URL}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER_SONG_SERVICE}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD_SONG_SERVICE}
+      SERVER_PORT: ${SONG_SERVICE_SERVER_PORT}
+      RESOURCE_SERVICE_REF_NAME: ${RESOURCE_SERVICE_REF_NAME}
+      RESOURCE_SERVICE_SERVER_PORT: ${RESOURCE_SERVICE_SERVER_PORT}
+    depends_on:
+      - song-db
+
+# the default network must be used by Module 2 rules
+#networks:
+#  microservices-net:
+#    external: true
